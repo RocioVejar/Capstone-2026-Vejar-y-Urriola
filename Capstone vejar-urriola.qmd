@@ -1,0 +1,202 @@
+---
+title: "Proyecto Final Diplomado – CASEN 2022"
+author: "Rocío Vejar y Salvador Urriola"
+format: html
+editor: visual
+---
+
+## Introducción
+
+La encuesta CASEN 2022 constituye una de las principales fuentes de información para el análisis de las condiciones de vida de la población en Chile, permitiendo examinar dimensiones sociales relevantes como el acceso a redes de apoyo, la integración social y las experiencias de discriminación. Estas dimensiones son fundamentales para comprender las desigualdades sociales y los mecanismos que influyen en el bienestar de las personas más allá de los ingresos.
+
+En particular, las redes de apoyo social representan un recurso clave para enfrentar situaciones de vulnerabilidad, ya que facilitan el acceso a ayuda material, emocional y práctica en distintos ámbitos de la vida cotidiana. Por otro lado, las experiencias de discriminación constituyen un factor de exclusión social que puede afectar negativamente el bienestar individual y las oportunidades de integración social.
+
+Este proyecto utiliza los microdatos de CASEN 2022 para construir indicadores sintéticos de apoyo social y discriminación, a partir del módulo de identidades, redes y participación. A través de un enfoque reproducible y documentado, se busca describir la distribución de estos indicadores y explorar diferencias según características sociodemográficas básicas, contribuyendo al análisis empírico de la cohesión social y las desigualdades en Chile.
+
+# Objetivo del proyecto
+
+# Objetivo general:
+
+Analizar la relación entre redes de apoyo social y experiencias de discriminación en la población residente en Chile, utilizando datos de la encuesta CASEN 2022.
+
+# Objetivos específicos
+
+Construir un índice de apoyo social a partir de variables que capturan la disponibilidad de distintos tipos de ayuda desde el entorno social.
+
+Construir un índice de discriminación basado en las experiencias de trato injusto reportadas por las personas encuestadas.
+
+Describir la distribución de ambos índices en la población total.
+
+Explorar diferencias en los niveles de apoyo social y discriminación según sexo y edad.
+
+```{r setup, message=FALSE, warning=FALSE}
+# ==============================
+# Librerías del proyecto
+# ==============================
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r cargar_base}
+# ==============================
+# Cargar base CASEN 2022
+# ==============================
+casen <- read.csv(
+  file = "C:/Users/Chio/Desktop/CAPSTONE/Base_de_datos_Casen_2022_18_marzo_2024.csv",
+  sep = ";",
+  header = TRUE,
+  encoding = "UTF-8",
+  stringsAsFactors = FALSE
+)
+
+# Verificación básica
+dim(casen)
+names(casen)[1:20]
+```
+Se utilizó la encuesta CASEN 2022 debido a que es la principal fuente de información oficial en Chile para el análisis de condiciones de vida, integración social y desigualdades. CASEN cuenta con representatividad nacional y módulos específicos que permiten analizar dimensiones no monetarias del bienestar, como las redes de apoyo y las experiencias de discriminación.
+
+```{r seleccionar_variables}
+# ==============================
+# Selección de variables
+# ==============================
+casen_sel <- casen %>%
+  select(
+    edad,
+    sexo,
+    r7a:r7k,
+    r9a:r9t
+  )
+
+glimpse(casen_sel)
+```
+Se incorporaron variables sociodemográficas básicas (edad y sexo) para contextualizar los resultados y permitir comparaciones descriptivas entre grupos poblacionales. Estas variables son fundamentales para identificar patrones de desigualdad social.
+
+```{r recodificar}
+# ==============================
+# Recodificación de variables
+# ==============================
+# r7: apoyo social
+# 1-2 = tiene apoyo / 3-4 = no tiene apoyo / -88 = NA
+# r9: discriminación (1 = sí / 0 = no)
+
+casen_rec <- casen_sel %>%
+  mutate(
+    across(r7a:r7k, ~ case_when(
+      . %in% c(1, 2) ~ 1,
+      . %in% c(3, 4) ~ 0,
+      . == -88       ~ NA_real_,
+      TRUE           ~ NA_real_
+    )),
+    across(r9a:r9t, ~ case_when(
+      . == 1 ~ 1,
+      . == 0 ~ 0,
+      TRUE   ~ NA_real_
+    ))
+  )
+
+summary(casen_rec)
+```
+Las variables r7 presentan una escala ordinal que mide la frecuencia o disponibilidad del apoyo. Para facilitar la interpretación y la construcción de indicadores sintéticos, se recodificaron en variables binarias que distinguen entre presencia y ausencia de apoyo efectivo.
+
+1–2: Existe apoyo
+
+3–4: No existe apoyo
+
+Valores inválidos: NA
+
+Las variables de discriminación fueron recodificadas para identificar claramente la presencia o ausencia de experiencias de trato injusto, manteniendo el foco en la ocurrencia del evento más que en su frecuencia.
+
+```{r indices}
+# ==============================
+# Construcción de índices
+# ==============================
+casen_rec <- casen_rec %>%
+  mutate(
+    indice_apoyo = rowSums(select(., r7a:r7k), na.rm = TRUE),
+    indice_discriminacion = rowSums(select(., r9a:r9t), na.rm = TRUE)
+  )
+
+# Validación de índices
+summary(casen_rec$indice_apoyo)
+summary(casen_rec$indice_discriminacion)
+```
+Se construyó un índice aditivo de apoyo social sumando los distintos tipos de apoyo disponibles. Este enfoque permite sintetizar una dimensión multidimensional en una sola medida interpretable.
+El índice de discriminación resume la cantidad de experiencias de trato injusto reportadas por cada persona, permitiendo identificar tanto la ocurrencia como la acumulación de discriminaciones.
+ ===============================================================
+
+ANÁLISIS DE DATOS
+
+Se optó por un análisis descriptivo y visual debido al carácter exploratorio del proyecto y al objetivo de identificar patrones generales en la distribución de los índices.
+
+```{r descriptivos}
+# ==============================
+# Análisis descriptivo básico
+# ==============================
+casen_rec %>%
+  summarise(
+    apoyo_promedio = mean(indice_apoyo, na.rm = TRUE),
+    discriminacion_promedio = mean(indice_discriminacion, na.rm = TRUE)
+  )
+```
+La tabla descriptiva muestra que el índice de apoyo social presenta un valor promedio de aproximadamente 6,1, en una escala cuyo máximo teórico es 11. Este resultado indica que, en promedio, las personas encuestadas declaran contar con varios tipos de apoyo disponibles, lo que sugiere una presencia relativamente extendida de redes de apoyo social en la población.
+
+Por su parte, el índice de discriminación presenta un valor promedio cercano a 1,1, lo que implica que, en promedio, las personas reportan al menos una experiencia de discriminación. Si bien el valor promedio es bajo en términos absolutos, este resultado evidencia que las experiencias de trato injusto no son excepcionales y afectan a una parte relevante de la población.
+
+los resultados descriptivos sugieren que la coexistencia de redes de apoyo social y experiencias de discriminación es un fenómeno relevante en la población chilena. Mientras el apoyo social parece relativamente extendido, la discriminación se manifiesta de manera más concentrada, afectando con mayor intensidad a ciertos grupos, lo que refuerza la importancia de analizar ambas dimensiones de manera conjunta.
+
+```{r grafico_apoyo}
+# ==============================
+# Gráfico: apoyo social por sexo
+# ==============================
+ggplot(casen_rec, aes(x = sexo_label, y = indice_apoyo)) +
+geom_boxplot(fill = "lightblue") +
+labs(
+x = "Sexo",
+y = "Índice de apoyo social",
+title = "Distribución del apoyo social según sexo"
+)
+casen_rec <- casen_rec %>%
+mutate(
+sexo_label = case_when(
+sexo == 1 ~ "Hombre",
+sexo == 2 ~ "Mujer",
+TRUE ~ NA_character_
+)
+)
+```
+
+El gráfico muestra la distribución del índice de apoyo social según sexo. Se observa que tanto hombres como mujeres presentan distribuciones similares, con medianas cercanas y rangos intercuartílicos comparables. Esto sugiere que, en términos generales, el acceso a redes de apoyo social no presenta diferencias marcadas según sexo. No obstante, existen variaciones individuales importantes dentro de cada grupo, lo que indica heterogeneidad en los niveles de apoyo social.
+
+
+```{r grafico_discr}
+
+ggplot(casen_rec, aes(x = sexo_label, y = indice_discriminacion)) +
+geom_boxplot(fill = "salmon") +
+labs(
+x = "Sexo",
+y = "Índice de discriminación",
+title = "Distribución de experiencias de discriminación según sexo"
+)
+```
+
+
+El gráfico muestra que la mayoría de la población reporta bajos niveles de discriminación, reflejados en medianas cercanas a cero para hombres y mujeres. Sin embargo, se observa una distribución asimétrica, con una cola superior que indica la existencia de personas que experimentan múltiples situaciones de discriminación. Esta dispersión es más marcada en el caso de las mujeres, lo que sugiere que las experiencias de trato injusto tienden a concentrarse con mayor intensidad en este grupo.
+
+
+```{r guardar_base}
+
+# ==============================
+# Guardar base procesada
+# ==============================
+dir.create("data", showWarnings = FALSE)
+dir.create("data/processed", showWarnings = FALSE)
+
+saveRDS(
+  casen_rec,
+  "data/processed/casen_2022_apoyo_discriminacion.rds"
+)
+
+```
+
