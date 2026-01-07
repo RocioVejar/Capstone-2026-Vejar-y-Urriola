@@ -1,0 +1,699 @@
+---
+title: "Proyecto Final Diplomado – CASEN 2022"
+author: "Rocío Vejar y Salvador Urriola"
+format: html
+editor: visual
+---
+
+==============================
+INTRODUCCIÓN
+==============================
+La encuesta CASEN 2022 constituye una de las principales fuentes de información para el análisis de las condiciones de vida de la población en Chile, permitiendo examinar dimensiones sociales relevantes como el acceso a redes de apoyo, la integración social y las experiencias de discriminación. Estas dimensiones resultan fundamentales para comprender las desigualdades sociales y los mecanismos que influyen en el bienestar de las personas más allá de los ingresos monetarios.
+
+En particular, las redes de apoyo social representan un recurso clave para enfrentar situaciones de vulnerabilidad, ya que facilitan el acceso a ayuda material, emocional y práctica en distintos ámbitos de la vida cotidiana. Por otro lado, las experiencias de discriminación constituyen un factor de exclusión social que puede afectar negativamente el bienestar individual, las trayectorias vitales y las oportunidades de integración social.
+
+Este proyecto utiliza los microdatos de la encuesta CASEN 2022 para construir indicadores sintéticos de apoyo social y discriminación, a partir del módulo de identidades, redes y participación. A través de un enfoque reproducible y documentado, se busca describir la distribución de estos indicadores y explorar diferencias según características sociodemográficas, contribuyendo al análisis empírico de la cohesión social y las desigualdades en Chile.
+
+OBJETIVOS
+==============================
+Objetivo general
+
+Analizar la relación entre redes de apoyo social y experiencias de discriminación en la población residente en Chile, utilizando datos de la encuesta CASEN 2022.
+
+Objetivos específicos
+
+Construir un índice de apoyo social a partir de variables que capturan la disponibilidad de distintos tipos de ayuda desde el entorno social.
+
+Construir un índice de discriminación basado en las experiencias de trato injusto reportadas por las personas encuestadas.
+
+Describir la distribución de ambos índices en la población total.
+
+Explorar diferencias en los niveles de apoyo social y discriminación según características sociodemográficas básicas.
+
+==============================
+SETUP Y CARGA DE DATOS
+==============================
+```{r setup, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+```{r cargar_base}
+# ==============================
+# Cargar base CASEN 2022
+# ==============================
+casen <- read.csv(
+  file = "C:/Users/Chio/Desktop/CAPSTONE/Base_de_datos_Casen_2022_18_marzo_2024.csv",
+  sep = ";",
+  header = TRUE,
+  encoding = "UTF-8",
+  stringsAsFactors = FALSE
+)
+
+# Verificación básica
+dim(casen)
+names(casen)[1:20]
+```
+
+
+*Justificación de la fuente de datos**
+
+Se utilizó la encuesta CASEN 2022 debido a que constituye la principal fuente oficial de información en Chile para el análisis de condiciones de vida, integración social y desigualdades. Su representatividad nacional y la inclusión de módulos específicos permiten abordar dimensiones no monetarias del bienestar, como redes de apoyo y experiencias de discriminación.
+
+---
+
+# ==============================
+# PREGUNTA DE INVESTIGACIÓN
+# ==============================
+
+**¿Es posible clasificar a las personas según si han experimentado o no situaciones de discriminación, a partir de sus características sociodemográficas, del hogar y de su nivel de apoyo social?**
+
+---
+
+# ==============================
+# SELECCIÓN Y RECODIFICACIÓN DE VARIABLES
+# ==============================
+
+```{r seleccionar_variables}
+casen_sel <- casen %>%
+  select(
+    edad, sexo, region, area, ecivil,
+    tot_per_h, n_nucleos, pco1,
+    e6a,
+    o1,
+    y1,
+    h7a:h7f,
+    r7a:r7k,
+    r9a:r9t
+  )
+
+glimpse(casen_sel)
+```
+
+```{r recodificacion}
+casen_rec <- casen_sel %>%
+  mutate(
+    across(r7a:r7k, ~ case_when(
+      . %in% c(1, 2) ~ 1,
+      . %in% c(3, 4) ~ 0,
+      TRUE ~ NA_real_
+    )),
+    across(r9a:r9t, ~ case_when(
+      . == 1 ~ 1,
+      . == 0 ~ 0,
+      TRUE ~ NA_real_
+    ))
+  )
+```
+
+---
+
+# ==============================
+# CONSTRUCCIÓN DE ÍNDICES
+# ==============================
+
+
+```{r indices}
+casen_rec <- casen_rec %>%
+  mutate(
+    indice_apoyo = rowSums(select(., r7a:r7k), na.rm = TRUE),
+    indice_discriminacion2 = rowSums(select(., r9a:r9s), na.rm = TRUE)
+  )
+
+summary(casen_rec$indice_apoyo)
+summary(casen_rec$indice_discriminacion2)
+```
+
+
+Se construyeron índices aditivos de apoyo social y discriminación, los cuales sintetizan múltiples dimensiones del fenómeno en medidas cuantitativas interpretables.
+
+---
+
+# ==============================
+# DEFINICIÓN DEL PROBLEMA DE CLASIFICACIÓN
+# ==============================
+
+```{r variable_objetivo}
+casen_rec <- casen_rec %>%
+  mutate(
+    discr_bin = ifelse(indice_discriminacion2 > 0, 1, 0)
+  )
+
+table(casen_rec$discr_bin)
+prop.table(table(casen_rec$discr_bin))
+```
+
+
+## La variable objetivo (discr_bin), indica si una persona ha experimentado o no discriminación, se definió como binaria/dependiente, donde el valor 1 indica haber experimentado al menos una situación de discriminación, y el valor 0 indica no haber reportado experiencias de discriminación.
+
+---
+
+# ==============================
+# ANÁLISIS DESCRIPTIVO
+# ==============================
+
+```{r descriptivos_indices}
+casen_rec %>%
+  summarise(
+    apoyo_promedio = mean(indice_apoyo, na.rm = TRUE),
+    discriminacion_promedio = mean(indice_discriminacion2, na.rm = TRUE)
+  )
+
+```
+# El índice de apoyo social presenta un valor promedio de **6,12**, en una escala que va de 0 a 11 puntos. Este resultado indica que, en promedio, las personas cuentan con apoyo en aproximadamente seis de las once dimensiones consideradas, lo que sugiere una presencia moderada de redes de apoyo social en la población analizada.  
+# Por su parte, el índice de discriminación alcanza un valor promedio de **0,27**, lo que refleja que la mayoría de los individuos no reporta experiencias de discriminación, mientras que un grupo reducido concentra uno o más episodios, elevando el promedio del indicador.
+
+```{r grafico_apoyo_hist}
+ggplot(casen_rec, aes(x = indice_apoyo)) +
+  geom_histogram(bins = 12, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribución del índice de apoyo social",
+    x = "Índice de apoyo social",
+    y = "Frecuencia"
+  )
+```
+# El histograma muestra que el índice de apoyo social presenta una distribución relativamente concentrada en valores intermedios, con mayor frecuencia entre 4 y 8 puntos. Esto indica que la mayoría de las personas dispone de varias fuentes de apoyo.
+
+---
+
+# ==============================
+# DESCRIPTIVOS SOCIODEMOGRÁFICOS
+# ==============================
+
+```{r descriptivos_sociodemo}
+casen_rec %>%
+  summarise(
+    media_edad = mean(edad, na.rm = TRUE),
+    mediana_edad = median(edad, na.rm = TRUE)
+  )
+
+casen_rec %>%
+  count(sexo) %>%
+  mutate(porcentaje = n / sum(n) * 100)
+
+casen_rec %>%
+  count(area) %>%
+  mutate(porcentaje = n / sum(n) * 100)
+
+```
+#Acerca de la Edad:
+# La población analizada presenta una edad promedio de 39,3 años, con una mediana de 38 años, lo que indica una distribución relativamente simétrica en torno a la adultez media.
+
+#Acerca del Sexo: 
+# En cuanto a la distribución por sexo, la muestra se encuentra ligeramente feminizada. Las mujeres representan aproximadamente el 52,7% de la población, mientras que los hombres corresponden al 47,3%.
+#Acerca de Área de residencia
+
+# Respecto al área de residencia, la mayoría de las personas encuestadas vive en zonas urbanas, que concentran cerca del 79,9% de la muestra, mientras que el 20,1% reside en áreas rurales.
+---
+
+# ==============================
+# ANÁLISIS BIVARIADO EXPLORATORIO (Y vs X)
+# ==============================
+
+```{r bivariado}
+# Discriminación vs sexo
+prop.table(table(casen_rec$discr_bin, casen_rec$sexo), 2)
+
+# Discriminación vs apoyo social
+tapply(casen_rec$indice_apoyo,
+       casen_rec$discr_bin,
+       mean, na.rm = TRUE)
+
+# Discriminación vs educación
+tapply(casen_rec$e6a,
+       casen_rec$discr_bin,
+       mean, na.rm = TRUE)
+
+# Ingreso (log)
+casen_rec <- casen_rec %>%
+  mutate(
+    y1 = ifelse(y1 < 0, NA, y1),
+    log_y1 = log(y1 + 1)
+  )
+
+tapply(casen_rec$log_y1,
+       casen_rec$discr_bin,
+       mean, na.rm = TRUE)
+```
+# Discriminación según sexo
+```{r grafico_bivariado_sexo}
+casen_rec %>%
+  count(sexo, discr_bin) %>%
+  group_by(sexo) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = factor(sexo),
+             y = prop,
+             fill = factor(discr_bin))) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Proporción de personas con experiencias de discriminación según sexo",
+    x = "Sexo",
+    y = "Porcentaje",
+    fill = "Discriminación"
+  )
+
+```
+
+### El gráfico muestra que la proporción de personas que reporta al menos una experiencia de discriminación es **ligeramente mayor en mujeres** que en hombres. Si bien la diferencia no es extrema, se observa un patrón consistente que sugiere una mayor exposición femenina a situaciones de trato injusto. Este resultado respalda la inclusión del sexo como variable explicativa en el modelo de clasificación.
+
+---
+
+##  Discriminación y apoyo social  
+
+```{r grafico_bivariado_apoyo}
+ggplot(casen_rec,
+       aes(x = factor(discr_bin),
+           y = indice_apoyo)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Índice de apoyo social según experiencia de discriminación",
+    x = "Experiencia de discriminación",
+    y = "Índice de apoyo social"
+  )
+```
+
+# Las personas que reportan experiencias de discriminación presentan, en promedio, **niveles de apoyo social ligeramente menores** que aquellas que no reportan discriminación. Aunque las distribuciones se superponen considerablemente, la diferencia en los valores centrales sugiere que el apoyo social podría actuar como un factor asociado a la experiencia de discriminación, aportando capacidad discriminante al modelo.
+
+---
+
+#Discriminación y nivel educacional  
+
+```{r grafico_bivariado_educacion}
+ggplot(casen_rec,
+       aes(x = factor(discr_bin),
+           y = e6a)) +
+  geom_boxplot(fill = "khaki") +
+  labs(
+    title = "Nivel educacional según experiencia de discriminación",
+    x = "Experiencia de discriminación",
+    y = "Nivel educacional"
+  )
+```
+
+#El nivel educacional promedio es **levemente mayor** entre quienes reportan experiencias de discriminación. Este patrón puede interpretarse como una mayor exposición social e institucional de los grupos con mayor educación, lo que incrementa las oportunidades de interacción y, potencialmente, de experiencias de trato injusto. La educación, por tanto, emerge como un predictor relevante en el análisis.
+
+---
+
+# Discriminación e ingreso laboral
+```{r grafico_bivariado_ingreso}
+ggplot(casen_rec,
+       aes(x = factor(discr_bin),
+           y = log_y1)) +
+  geom_boxplot(fill = "salmon") +
+  labs(
+    title = "Ingreso laboral (log) según experiencia de discriminación",
+    x = "Experiencia de discriminación",
+    y = "Ingreso laboral (log)"
+  )
+
+```
+
+#En términos de ingreso laboral, se observan diferencias moderadas entre ambos grupos. Las personas que reportan discriminación presentan, en promedio, **niveles de ingreso ligeramente distintos**, lo que sugiere que la posición socioeconómica se relaciona con la experiencia de discriminación. Este resultado refuerza la relevancia del ingreso como variable explicativa en el modelo de clasificación.
+
+#  CIERRE DEL ANÁLISIS BIVARIADO
+
+# El análisis bivariado exploratorio evidencia diferencias sistemáticas entre individuos que han experimentado discriminación y aquellos que no, particularmente en variables sociodemográficas y socioeconómicas como el sexo, el nivel de apoyo social, la educación y el ingreso laboral. Si bien las diferencias observadas no son extremas y presentan solapamiento entre grupos, los patrones identificados sugieren que estas variables poseen capacidad discriminante preliminar. En consecuencia, su inclusión como predictores en los modelos de clasificación supervisada se encuentra empíricamente justificada.
+
+# ==============================
+# MATRIZ DE CORRELACIÓN
+# ==============================
+
+#Selección de variables numéricas
+
+#Se consideran únicamente variables numéricas continuas que serán utilizadas como predictores en los modelos:
+
+#1) edad
+
+#2) tamaño del hogar (tot_per_h)
+
+#3) índice de apoyo social (indice_apoyo)
+
+#4) ingreso laboral (y1)
+
+library(tibble)
+
+```{r matriz_correlacion}
+vars_num <- casen_rec %>%
+  select(edad, tot_per_h, indice_apoyo, y1)
+
+cor(vars_num, use = "complete.obs")
+```
+
+---
+
+#Visualización de la matriz de correlación
+
+```{r grafico_correlacion}
+library(tidyr)
+
+cor_df <- cor(vars_num, use = "complete.obs") %>%
+  as.data.frame() %>%
+  rownames_to_column("var1") %>%
+  pivot_longer(-var1, names_to = "var2", values_to = "correlacion")
+
+ggplot(cor_df, aes(x = var1, y = var2, fill = correlacion)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0
+  ) +
+  labs(
+    title = "Matriz de correlación entre variables numéricas",
+    x = "",
+    y = "",
+    fill = "Correlación"
+  ) +
+  theme_minimal()
+```
+# El análisis de la matriz de correlación se realizó con el propósito de examinar las relaciones lineales entre las variables explicativas numéricas incluidas en el estudio, antes de la estimación de los modelos de clasificación. Esta etapa permite identificar posibles problemas de redundancia de información, evaluar la presencia de multicolinealidad y anticipar la estabilidad e interpretabilidad de los modelos multivariados, particularmente de la regresión logística.
+
+#Interpretación
+
+#La matriz de correlación muestra que las variables numéricas consideradas presentan correlaciones bajas entre sí. Ninguna relación supera valores que indiquen redundancia relevante entre predictores. La mayor asociación observada corresponde a una correlación negativa moderada entre edad y tamaño del hogar, un patrón esperado desde el punto de vista demográfico. El índice de apoyo social y el ingreso laboral presentan correlaciones muy bajas con el resto de las variables, lo que indica que capturan dimensiones distintas del fenómeno analizado.
+
+#Justificación metodológica
+
+#Dado que no se observan correlaciones elevadas entre las variables explicativas, no existen problemas de multicolinealidad que puedan afectar la estabilidad o interpretación de los modelos. En consecuencia, todas las variables numéricas seleccionadas pueden incorporarse conjuntamente en la regresión logística y en los modelos de clasificación posteriores sin comprometer su desempeño.
+
+MODELO 
+# Preparación del dataset para ML
+#Se seleccionan la variable dependiente (discr_bin) y un conjunto acotado de variables explicativas, previamente justificadas mediante análisis descriptivo y bivariado.
+
+# Dataset para modelamiento
+```{r ML}
+datos_modelo <- casen_rec %>%
+  select(
+    discr_bin,
+    edad,
+    sexo,
+    area,
+    tot_per_h,
+    indice_apoyo
+  ) %>%
+  na.omit()
+```
+
+La selección de variables se basa en su relevancia teórica y empírica para explicar la experiencia de discriminación. La eliminación de valores faltantes (na.omit()) permite trabajar con un conjunto de datos completo, evitando problemas en la estimación del modelo.
+
+#División en conjunto de entrenamiento y prueba
+#Para evaluar el desempeño del modelo de forma objetiva, el conjunto de datos se divide aleatoriamente en dos subconjuntos:
+
+# 70% de los datos para entrenamiento
+
+# 30% para prueba
+
+```{r ML PRUEBA} 
+set.seed(123)
+
+id <- sample(seq_len(nrow(datos_modelo)),
+             size = 0.7 * nrow(datos_modelo))
+
+train <- datos_modelo[id, ]
+test  <- datos_modelo[-id, ]
+```
+
+#La división en conjuntos de entrenamiento y prueba permite estimar el modelo utilizando una parte de los datos y evaluar su capacidad predictiva en observaciones no utilizadas durante el ajuste. El uso de una semilla fija (set.seed(123)) garantiza la reproducibilidad de los resultados.
+
+**Con este procedimiento se obtiene un conjunto de datos limpio y adecuadamente particionado, listo para la estimación del modelo de regresión logística y su posterior evaluación mediante matriz de confusión y curva ROC.**
+
+# ==============================
+# MODELO DE REGRESIÓN LOGÍSTICA 
+# ==============================
+```{r MODELO BASE}
+
+# Regresión logística (modelo base)
+modelo_logit <- glm(
+  discr_bin ~ edad + sexo + area + tot_per_h + indice_apoyo,
+  data = train,
+  family = binomial(link = "logit")
+)
+
+summary(modelo_logit)
+```
+#Odds Ratios 
+# Para interpretar mejor los efectos, se calculan los odds ratios.
+```{r ODDS}
+
+exp(coef(modelo_logit))
+```
+#¿QUE DICE EL MODELO? #Interpretación variable por variable: 
+
+# 1) Edad
+
+# Coeficiente: −0.0072
+
+# OR: 0.993
+
+# ES DECIR: A mayor edad, menor probabilidad de haber experimentado discriminación. Cada año adicional reduce la probabilidad relativa de discriminación en aproximadamente 0,7%. Estos resultados se Conectan con el análisis bivariado que apunta a una menor discriminación en edades mayores.
+
+# 2) Sexo
+
+# Coeficiente: 0.086
+
+# OR: 1.09
+
+# El sexo femenino presenta una mayor probabilidad de reportar experiencias de discriminación en comparación con los hombres. Manteniendo constantes las demás variables, las mujeres tienen cerca de 9% más probabilidades de reportar discriminación.
+
+
+# 3) Área (urbana/rural)
+
+# Coeficiente: −0.36
+
+# OR: 0.70
+
+# Residir en áreas rurales se asocia con una menor probabilidad de reportar discriminación en comparación con áreas urbanas. Esto sugiere que la mayor exposición social e institucional en zonas urbanas puede aumentar la probabilidad de experiencias discriminatorias.
+
+# 4) Tamaño del hogar (tot_per_h)
+
+# Coeficiente: −0.044
+
+# OR: 0.96
+
+# A mayor tamaño del hogar, menor probabilidad de reportar discriminación. (contexto familiar como amortiguador)
+
+# 5) Índice de apoyo social
+
+# Coeficiente: −0.020
+
+# OR: 0.98
+
+# Un mayor nivel de apoyo social se asocia con una menor probabilidad de experimentar discriminación. Cada punto adicional en el índice de apoyo reduce la probabilidad relativa de discriminación en aproximadamente 2%.
+
+# Los resultados del modelo de regresión logística indican que la probabilidad de haber experimentado discriminación se asocia de manera significativa con variables sociodemográficas, del hogar y de apoyo social. En particular, la edad, el tamaño del hogar y el índice de apoyo social presentan efectos protectores, reduciendo la probabilidad de discriminación, mientras que el sexo femenino se asocia con una mayor probabilidad de reportar experiencias de trato injusto. Asimismo, residir en áreas urbanas incrementa la probabilidad de discriminación en comparación con áreas rurales. Estos resultados son coherentes con los análisis descriptivos y bivariados realizados previamente.
+
+
+# Evaluación del modelo de regresión logística
+```{r eva_modelo}
+
+# Predicción de probabilidades
+pred_logit_015 <- ifelse(prob_logit > 0.15, 1, 0)
+#Para caret 
+pred_logit_015 <- factor(pred_logit_015, levels = c(0, 1))
+
+```
+
+
+# Matriz de confusión CARET VERSION 
+```{r MA}
+conf_mat_015 <- confusionMatrix(
+  data = pred_logit_015,
+  reference = test$discr_bin,
+  positive = "1"
+)
+
+conf_mat_015
+```
+
+```{r ROCAUC}
+library(pROC)
+
+# Curva ROC
+roc_logit <- roc(test$discr_bin, prob_logit)
+
+# Umbral óptimo según Youden
+coords_youden <- coords(
+  roc_logit,
+  x = "best",
+  best.method = "youden",
+  ret = c("threshold", "sensitivity", "specificity")
+)
+
+coords_youden
+```
+
+```{r ROCAUC}
+# Umbral óptimo
+umbral_optimo <- coords_youden["threshold"]
+
+# Nueva predicción
+pred_logit_opt <- ifelse(prob_logit > umbral_optimo, 1, 0)
+
+# Convertir a factor
+pred_logit_opt <- factor(pred_logit_opt, levels = c(0,1))
+test$discr_bin <- factor(test$discr_bin, levels = c(0,1))
+coords_youden
+
+```
+# El umbral de clasificación óptimo, identificado mediante el criterio de Youden sobre la curva ROC, se sitúa en 0.168. Este umbral permite maximizar simultáneamente la sensibilidad y la especificidad, alcanzando valores de 0.58 y 0.53 respectivamente. Si bien el desempeño del modelo es moderado, estos resultados indican una capacidad discriminante superior al azar y justifican el uso de la regresión logística como modelo de referencia para comparaciones posteriores.
+
+#RANDOM FOREST 
+# Preparación del dataset (MISMAS VARIABLES)
+```{r RF}
+# Dataset para modelamiento
+datos_modelo <- casen_rec %>%
+  select(
+    discr_bin,
+    edad,
+    sexo,
+    area,
+    tot_per_h,
+    indice_apoyo
+  ) %>%
+  na.omit()
+```
+#PRUEBA 
+```{r RF}
+
+set.seed(123)
+
+id <- sample(seq_len(nrow(datos_modelo)),
+             size = 0.7 * nrow(datos_modelo))
+
+train <- datos_modelo[id, ]
+test  <- datos_modelo[-id, ]
+```
+
+```{r RF}
+# Variable objetivo como factor
+train$discr_bin <- factor(train$discr_bin, levels = c(0,1))
+test$discr_bin  <- factor(test$discr_bin,  levels = c(0,1))
+```
+#ENTRENAMIENTO 
+```{r RF}
+
+library(randomForest)
+
+set.seed(123)
+
+modelo_rf <- randomForest(
+  discr_bin ~ edad + sexo + area + tot_per_h + indice_apoyo,
+  data = train,
+  ntree = 200,
+  mtry = 2,
+  importance = FALSE
+)
+
+modelo_rf
+```
+# El modelo aprende patrones complejos a partir de combinaciones de edad, sexo, área, tamaño del hogar y apoyo social, sin necesidad de especificar previamente cómo estas variables se relacionan con la discriminación.
+
+#PREDICCIÓN
+```{r RF}
+# Data exacta usada por RF (sin NA, mismo orden)
+test_rf <- model.frame(
+  discr_bin ~ edad + sexo + area + tot_per_h + indice_apoyo,
+  data = test
+)
+
+# Probabilidades clase positiva (1)
+prob_rf <- predict(modelo_rf, test_rf, type = "prob")[, "1"]
+
+length(prob_rf)
+nrow(test_rf)   # DEBEN ser iguales
+```
+# El Random Forest entrega, para cada individuo del conjunto de prueba, una probabilidad estimada de pertenecer a la clase positiva (haber experimentado discriminación).
+
+# Valores cercanos a 0 → baja probabilidad de discriminación
+
+# Valores cercanos a 1 → alta probabilidad de discriminación
+
+#MATRIZ CONFUSIÓN CON UMBRAL 0,5
+```{r RF}
+library(caret)
+
+pred_rf <- ifelse(prob_rf > 0.5, 1, 0)
+
+pred_rf <- factor(pred_rf, levels = c(0,1))
+test_rf$discr_bin <- factor(test_rf$discr_bin, levels = c(0,1))
+
+conf_mat_rf <- confusionMatrix(
+  data = pred_rf,
+  reference = test_rf$discr_bin,
+  positive = "1"
+)
+
+conf_mat_rf
+```
+# Con umbral 0.5 el Random Forest colapsa hacia la clase mayoritaria: tiene alta accuracy pero sensibilidad casi nula. Por eso usamos la ROC para elegir un umbral óptimo
+
+# curva roc
+```{r RF}
+library(pROC)
+
+roc_rf <- roc(test_rf$discr_bin, prob_rf)
+
+# AUC
+auc(roc_rf)
+
+# Gráfico ROC
+plot(roc_rf,
+     main = "Curva ROC - Random Forest",
+     col = "darkgreen")
+
+```
+
+# UMBRAL OPTIMO
+
+```{r RF}
+coords_rf <- coords(
+  roc_rf,
+  x = "best",
+  best.method = "youden",
+  ret = c("threshold", "sensitivity", "specificity")
+)
+
+coords_rf
+```
+
+# MATRIZ CON UMBRAL OPTIMO
+```{r RF}
+# Extraer umbral como número
+umbral_rf <- as.numeric(coords_rf["threshold"])
+
+# Nueva predicción
+pred_rf_opt <- ifelse(prob_rf > umbral_rf, 1, 0)
+
+pred_rf_opt <- factor(pred_rf_opt, levels = c(0,1))
+
+conf_mat_rf_opt <- confusionMatrix(
+  data = pred_rf_opt,
+  reference = test_rf$discr_bin,
+  positive = "1"
+)
+
+conf_mat_rf_opt
+
+```
+# Al optimizar el umbral de clasificación mediante la curva ROC, el modelo Random Forest incrementa su sensibilidad hasta un 14%, logrando identificar una mayor proporción de individuos que reportan experiencias de discriminación. Sin embargo, la balanced accuracy se mantiene cercana a 0.5 y el estadístico Kappa es prácticamente nulo, lo que indica que el desempeño del modelo continúa siendo similar al azar. Estos resultados, junto con un AUC cercano a 0.5, sugieren que el Random Forest no logra capturar patrones predictivos relevantes con las variables consideradas, incluso tras la optimización del umbral.
+
+#ANALISIS COMPARATIVO DE LOS MODELOS
+
+
+# ==============================
+# Guardar base procesada
+# ==============================
+dir.create("data", showWarnings = FALSE)
+dir.create("data/processed", showWarnings = FALSE)
+
+saveRDS(
+  casen_rec,
+  "data/processed/casen_2022_apoyo_discriminacion.rds"
+)
+
+```
